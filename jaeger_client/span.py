@@ -20,9 +20,7 @@
 
 from __future__ import absolute_import
 
-from builtins import str
 import json
-import six
 import threading
 import time
 
@@ -56,7 +54,7 @@ class Span(opentracing.Span):
         self.tags = []
         self.logs = []
         if tags:
-            for k, v in six.iteritems(tags):
+            for k, v in tags.items():
                 self.set_tag(k, v)
 
     def set_operation_name(self, operation_name):
@@ -141,20 +139,9 @@ class Span(opentracing.Span):
         return self
 
     def set_baggage_item(self, key, value):
-        prev_value = self.get_baggage_item(key=key)
         new_context = self.context.with_baggage_item(key=key, value=value)
         with self.update_lock:
             self._context = new_context
-        if self.is_sampled():
-            logs = {
-                'event': 'baggage',
-                'key': key,
-                'value': value,
-            }
-            if prev_value:
-                # TODO add metric for this
-                logs['override'] = 'true'
-            self.log_kv(key_values=logs)
         return self
 
     def get_baggage_item(self, key):

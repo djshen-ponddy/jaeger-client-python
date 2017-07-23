@@ -18,8 +18,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-from past.builtins import basestring
-import six
 import socket
 import struct
 
@@ -34,9 +32,6 @@ _max_signed_port = (1 << 15) - 1
 _max_unsigned_port = (1 << 16)
 _max_signed_id = (1 << 63) - 1
 _max_unsigned_id = (1 << 64)
-
-if six.PY3:
-    long = int
 
 
 def ipv4_to_int(ipv4):
@@ -72,8 +67,8 @@ def id_to_int(big_id):
 
 
 def make_endpoint(ipv4, port, service_name):
-    if isinstance(ipv4, basestring):
-        ipv4 = ipv4_to_int(ipv4)
+    #if isinstance(ipv4, basestring):
+    #    ipv4 = ipv4_to_int(ipv4)
     port = port_to_int(port)
     if port is None:
         port = 0
@@ -122,7 +117,7 @@ def timestamp_micros(ts):
     :param ts:
     :return:
     """
-    return long(ts * 1000000)
+    return int(ts * 1000000)
 
 
 def make_zipkin_spans(spans):
@@ -136,11 +131,14 @@ def make_zipkin_spans(spans):
             event.host = endpoint
         with span.update_lock:
             add_zipkin_annotations(span=span, endpoint=endpoint)
+            parent_id = None
+            if span.parent_id is not None:
+                parent_id = id_to_int(span.parent_id)
             zipkin_span = zipkin_collector.Span(
                 trace_id=id_to_int(span.trace_id),
                 name=span.operation_name,
                 id=id_to_int(span.span_id),
-                parent_id=id_to_int(span.parent_id) or None,
+                parent_id=parent_id,
                 annotations=span.logs,
                 binary_annotations=span.tags,
                 debug=span.is_debug(),

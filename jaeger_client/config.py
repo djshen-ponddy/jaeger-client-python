@@ -20,7 +20,6 @@
 
 from __future__ import absolute_import
 
-from builtins import object
 import logging
 import threading
 
@@ -48,10 +47,9 @@ from .constants import (
     BAGGAGE_HEADER_PREFIX,
     DEBUG_ID_HEADER_KEY,
 )
-from .metrics import LegacyMetricsFactory, MetricsFactory, Metrics
+from .metrics import Metrics
 from .utils import get_boolean, ErrorReporter
 
-DEFAULT_REPORTING_HOST = 'localhost'
 DEFAULT_REPORTING_PORT = 5775
 DEFAULT_SAMPLING_PORT = 5778
 LOCAL_AGENT_DEFAULT_ENABLED = True
@@ -83,26 +81,24 @@ class Config(object):
     _initialized = False
     _initialized_lock = threading.Lock()
 
-    def __init__(self, config, metrics=None, service_name=None, metrics_factory=None):
+    def __init__(self, config, metrics=None, service_name=None):
         """
-        :param metrics: an instance of Metrics class, or None. This parameter
-            has been deprecated, please use metrics_factory instead.
+        :param metrics: an instance of Metrics class, or None
         :param service_name: default service name.
             Can be overwritten by config['service_name'].
-        :param metrics_factory: an instance of MetricsFactory class, or None.
         """
         self.config = config
         if get_boolean(self.config.get('metrics', True), True):
-            self._metrics_factory = metrics_factory or LegacyMetricsFactory(metrics or Metrics())
+            self._metrics = metrics or Metrics()
         else:
             # if metrics are explicitly disabled, use a dummy
-            self._metrics_factory = MetricsFactory()
+            self._metrics = Metrics()
         self._service_name = config.get('service_name', service_name)
         if self._service_name is None:
             raise ValueError('service_name required in the config or param')
 
         self._error_reporter = ErrorReporter(
-            metrics=Metrics(),
+            metrics=self.metrics,
             logger=logger if self.logging else None,
         )
 
@@ -217,14 +213,6 @@ class Config(object):
             return DEFAULT_REPORTING_PORT
 
     @property
-    def local_agent_reporting_host(self):
-        # noinspection PyBroadException
-        try:
-            return self.local_agent_group()['reporting_host']
-        except:
-            return DEFAULT_REPORTING_HOST
-
-    @property
     def max_operations(self):
         return self.config.get('max_operations', None)
 
@@ -253,7 +241,7 @@ class Config(object):
                 channel=channel,
                 service_name=self.service_name,
                 logger=logger,
-                metrics_factory=self._metrics_factory,
+                metrics=self.metrics,
                 error_reporter=self.error_reporter,
                 sampling_refresh_interval=self.sampling_refresh_interval,
                 max_operations=self.max_operations)
@@ -265,7 +253,7 @@ class Config(object):
             batch_size=self.reporter_batch_size,
             flush_interval=self.reporter_flush_interval,
             logger=logger,
-            metrics_factory=self._metrics_factory,
+            metrics=self.metrics,
             error_reporter=self.error_reporter)
 
         if self.logging:
@@ -284,7 +272,7 @@ class Config(object):
             service_name=self.service_name,
             reporter=reporter,
             sampler=sampler,
-            metrics_factory=self._metrics_factory,
+            metrics=self.metrics,
             trace_id_header=self.trace_id_header,
             baggage_header_prefix=self.baggage_header_prefix,
             debug_id_header=self.debug_id_header,
@@ -305,7 +293,7 @@ class Config(object):
         """
         logger.info('Initializing Jaeger Tracer with UDP reporter')
         return LocalAgentSender(
-            host=self.local_agent_reporting_host,
+            host='localhost',
             sampling_port=self.local_agent_sampling_port,
             reporting_port=self.local_agent_reporting_port,
             io_loop=io_loop

@@ -17,29 +17,30 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
-from builtins import bytes
-from builtins import range
-from builtins import object
 import fcntl
 import socket
 import struct
 import time
+
+from .metrics import Metrics
 
 
 class ErrorReporter(object):
     """
     Reports errors by emitting metrics, and if logger is provided,
     logging the error message once every log_interval_minutes
-
-    N.B. metrics will be deprecated in the future
     """
 
     def __init__(self, metrics, logger=None, log_interval_minutes=15):
         self.logger = logger
         self.log_interval_minutes = log_interval_minutes
+        self.metrics = metrics or Metrics()
         self._last_error_reported_at = time.time()
 
-    def error(self, *args):
+    def error(self, name, count, *args):
+        if self.metrics:
+            self.metrics.count(name, count)
+
         if self.logger is None:
             return
 
@@ -73,7 +74,7 @@ def local_ip():
     if ip.startswith('127.'):
         # Check eth0, eth1, eth2, en0, ...
         interfaces = [
-            i + bytes(n) for i in (b'eth', b'en', b'wlan') for n in range(3)
+            i + str(n) for i in ('eth', 'en', 'wlan') for n in xrange(3)
         ]  # :(
         for interface in interfaces:
             try:

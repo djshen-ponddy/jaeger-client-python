@@ -20,14 +20,12 @@
 
 from __future__ import absolute_import
 
-from builtins import object
 import socket
 
-import logging
 import os
-import random
 import time
-import six
+import logging
+import random
 import opentracing
 from opentracing import Format, UnsupportedFormatException
 from opentracing.ext import tags as ext_tags
@@ -37,18 +35,14 @@ from .codecs import TextCodec, ZipkinCodec, ZipkinSpanFormat, BinaryCodec
 from .span import Span, SAMPLED_FLAG, DEBUG_FLAG
 from .span_context import SpanContext
 from .thrift import ipv4_to_int
-from .metrics import Metrics, LegacyMetricsFactory
+from .metrics import Metrics
 from .utils import local_ip
 
 logger = logging.getLogger('jaeger_tracing')
 
 
 class Tracer(opentracing.Tracer):
-    """
-    N.B. metrics has been deprecated, use metrics_factory instead.
-    """
     def __init__(self, service_name, reporter, sampler, metrics=None,
-                 metrics_factory=None,
                  trace_id_header=constants.TRACE_ID_HEADER,
                  baggage_header_prefix=constants.BAGGAGE_HEADER_PREFIX,
                  debug_id_header=constants.DEBUG_ID_HEADER_KEY,
@@ -57,8 +51,7 @@ class Tracer(opentracing.Tracer):
         self.reporter = reporter
         self.sampler = sampler
         self.ip_address = ipv4_to_int(local_ip())
-        self.metrics_factory = metrics_factory or LegacyMetricsFactory(metrics or Metrics())
-        self.metrics = TracerMetrics(self.metrics_factory)
+        self.metrics = metrics or Metrics()
         self.random = random.Random(time.time() * (os.getpid() or 1))
         self.debug_id_header = debug_id_header
         self.codecs = {
@@ -139,7 +132,7 @@ class Tracer(opentracing.Tracer):
                 if sampled:
                     flags = SAMPLED_FLAG
                     tags = tags or {}
-                    for k, v in six.iteritems(sampler_tags):
+                    for k, v in sampler_tags.items():
                         tags[k] = v
             else:  # have debug id
                 flags = SAMPLED_FLAG | DEBUG_FLAG
@@ -166,7 +159,7 @@ class Tracer(opentracing.Tracer):
 
         if (rpc_server or not parent_id) and (flags & SAMPLED_FLAG):
             # this is a first-in-process span, and is sampled
-            for k, v in six.iteritems(self.tags):
+            for k, v in self.tags.items():
                 span.set_tag(k, v)
 
         self._emit_span_metrics(span=span, join=rpc_server)
@@ -204,20 +197,20 @@ class Tracer(opentracing.Tracer):
 
     def _emit_span_metrics(self, span, join=False):
         if span.is_sampled():
-            self.metrics.spans_sampled(1)
+            self.metrics.count(Metrics.SPANS_SAMPLED, 1)
         else:
-            self.metrics.spans_not_sampled(1)
+            self.metrics.count(Metrics.SPANS_NOT_SAMPLED, 1)
         if not span.context.parent_id:
             if span.is_sampled():
                 if join:
-                    self.metrics.traces_joined_sampled(1)
+                    self.metrics.count(Metrics.TRACES_JOINED_SAMPLED, 1)
                 else:
-                    self.metrics.traces_started_sampled(1)
+                    self.metrics.count(Metrics.TRACES_STARTED_SAMPLED, 1)
             else:
                 if join:
-                    self.metrics.traces_joined_not_sampled(1)
+                    self.metrics.count(Metrics.TRACES_JOINED_NOT_SAMPLED, 1)
                 else:
-                    self.metrics.traces_started_not_sampled(1)
+                    self.metrics.count(Metrics.TRACES_STARTED_NOT_SAMPLED, 1)
         return span
 
     def report_span(self, span):
@@ -225,21 +218,3 @@ class Tracer(opentracing.Tracer):
 
     def random_id(self):
         return self.random.getrandbits(constants.MAX_ID_BITS)
-
-
-class TracerMetrics(object):
-    """Tracer specific metrics."""
-
-    def __init__(self, metrics_factory):
-        self.traces_started_sampled = \
-            metrics_factory.create_counter(name='jaeger.traces-started', tags={'sampled': 'true'})
-        self.traces_started_not_sampled = \
-            metrics_factory.create_counter(name='jaeger.traces-started', tags={'sampled': 'false'})
-        self.traces_joined_sampled = \
-            metrics_factory.create_counter(name='jaeger.traces-joined', tags={'sampled': 'true'})
-        self.traces_joined_not_sampled = \
-            metrics_factory.create_counter(name='jaeger.traces-joined', tags={'sampled': 'false'})
-        self.spans_sampled = \
-            metrics_factory.create_counter(name='jaeger.spans', tags={'sampled': 'true'})
-        self.spans_not_sampled = \
-            metrics_factory.create_counter(name='jaeger.spans', tags={'sampled': 'false'})
